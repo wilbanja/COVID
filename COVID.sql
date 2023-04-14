@@ -56,9 +56,9 @@ GROUP BY date
 ORDER BY date
 
 -- Join deaths and vaccinations tables
--- Total population vs. vaccinations
-SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations
-    ,SUM(v.new_vaccinations) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
+-- Running vaccination totals by country
+SELECT d.continent, d.location, d.date, d.population, v.new_people_vaccinated_smoothed
+    ,SUM(v.new_people_vaccinated_smoothed) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
 FROM deaths d
 JOIN vaccinations v
 	ON d.location = v.location
@@ -66,11 +66,11 @@ JOIN vaccinations v
 WHERE d.continent IS NOT NULL AND d.continent <> ''
 ORDER BY 2, 3
 
--- Vaccination percentage by country using CTE
-WITH PopvsVaccination (continent, location, date, population, new_vaccinations, VaccinationSum) AS 
+-- Running vaccination percentage by country using CTE
+WITH PopvsVaccination (continent, location, date, population, new_people_vaccinated_smoothed, VaccinationSum) AS 
 (
-SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations
-    ,SUM(v.new_vaccinations) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
+SELECT d.continent, d.location, d.date, d.population, v.new_people_vaccinated_smoothed
+    ,SUM(v.new_people_vaccinated_smoothed) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
 FROM deaths d
 JOIN vaccinations v
     ON d.location = v.location
@@ -78,11 +78,10 @@ JOIN vaccinations v
 WHERE d.continent IS NOT NULL AND d.continent <> ''
 )
 
---
 SELECT *, VaccinationSum*1.0/population*100 AS PercentVaccinated
 FROM PopvsVaccination
 
--- Vaccination percentage by country using temp table
+-- Running vaccination percentage by country using temporary table
 -- Drop table if it exists
 DROP TABLE IF EXISTS PercentPopulationVaccinated;
 
@@ -93,14 +92,14 @@ continent varchar(50),
 location varchar(50),
 date date,
 population int8,
-new_vaccinations int4,
+new_people_vaccinated_smoothed int4,
 VaccinationSum int8
 );
 
 -- Insert data into table from SELECT statement
 INSERT INTO PercentPopulationVaccinated
-SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations
-    ,SUM(v.new_vaccinations) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
+SELECT d.continent, d.location, d.date, d.population, v.new_people_vaccinated_smoothed
+    ,SUM(v.new_people_vaccinated_smoothed) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
 FROM deaths d
 JOIN vaccinations v
     ON d.location = v.location
@@ -112,16 +111,26 @@ SELECT *, (VaccinationSum*1.0/population) * 100 AS PercentVaccinated
 FROM PercentPopulationVaccinated;
 
 -- Create view to store for data visualizations
-DROP VIEW IF EXISTS PercentPopluationVaccinated;
-CREATE VIEW PercentPopluationVaccinated AS
-SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations
-    ,SUM(v.new_vaccinations) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
+-- Drop view if it exists
+DROP VIEW IF EXISTS vPercentPopulationVaccinated;
+
+-- Create view
+CREATE VIEW vPercentPopulationVaccinated AS
+SELECT d.continent, d.location, d.date, d.population, v.new_people_vaccinated_smoothed
+    ,SUM(v.new_people_vaccinated_smoothed) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS VaccinationSum
 FROM deaths d
 JOIN vaccinations v
     ON d.location = v.location
     AND d.date = v.date
 WHERE d.continent IS NOT NULL AND d.continent <> ''
-ORDER BY 2, 3
+ORDER BY 2, 3;
 
+-- Show view
 SELECT *
-FROM percentpopluationvaccinated p 
+FROM vPercentPopulationVaccinated; 
+
+-- Hospital and ICU admissions for the US vs. Time
+SELECT location, date, icu_patients, hosp_patients
+FROM deaths
+WHERE location = 'United States'
+ORDER BY date
